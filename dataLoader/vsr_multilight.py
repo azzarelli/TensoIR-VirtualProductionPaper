@@ -200,7 +200,7 @@ class VSR_multi_lights(Dataset):
 
         for idx, light_name in enumerate(selected_names):
             
-            # TODO: switch these two back once the env maps are synthesized
+            # TODO: switch these two back once the env maps are synthesized REMINDER!!!!
             if self.split == 'test' and idx > 22:
                 continue
             if self.split == 'train' and idx < 23:
