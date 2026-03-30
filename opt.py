@@ -16,9 +16,11 @@ def config_parser(cmd=None):
                         help='input data directory')
     parser.add_argument("--hdrdir", type=str, default='./data/llff/fern',
                         help='input HDR directory')
-    parser.add_argument("--progress_refresh_rate", type=int, default=10,
+    parser.add_argument("--progress_refresh_rate", type=int, default=1000,
                         help='how many iterations to show psnrs or iters')
     parser.add_argument("--local_rank", type=int, default=0)
+    
+    parser.add_argument("--scene", type=int, default=0)
 
     parser.add_argument('--with_depth', action='store_true')
     parser.add_argument('--downsample_train', type=float, default=1.0)

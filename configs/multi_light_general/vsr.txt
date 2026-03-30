@@ -1,25 +1,25 @@
 dataset_name = tensoIR_unknown_general_multi_lights
-datadir = /media/barry/56EA40DEEA40BBCD1/DATA/studio_test5/scene2/
-hdrdir = /media/barry/56EA40DEEA40BBCD1/DATA/studio_test5/scene2/meta/backgrounds
-expname = VSR_2.1_1
-basedir = ./log/log_vsr_multilight
+datadir = /media/barry/56EA40DEEA40BBCD1/DATA/studio_test5/scene3/
+hdrdir = /media/barry/56EA40DEEA40BBCD1/DATA/studio_test5/scene3/meta/backgrounds
+expname = test
+scene=3
+
+basedir = ./log/VSR_logs
 add_timestamp = 1
 downsample_train = 1
 downsample_test = 1
 
-n_iters = 80000
+n_iters = 100
 batch_size = 2048
 lr_decay_iters = 80000
 
 N_voxel_init = 2097152 # 128**3
 N_voxel_final = 64000000 # 400**3
 
-
 upsamp_list = [10000, 20000, 30000, 40000]
 update_AlphaMask_list = [10000, 15000, 20000, 25000, 30000, 35000]
 N_vis = 5
-vis_every = 10000
-
+vis_every = 10
 
 render_test = 1
 

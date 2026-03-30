@@ -90,17 +90,7 @@ def render_test(args):
     tensoIR.load(ckpt)
 
 
-
     logfolder = f'{args.basedir}/test_{args.expname}{datetime.datetime.now().strftime("-%Y%m%d-%H%M%S")}'
-
-    # if args.render_train:
-    #     os.makedirs(f'{logfolder}/imgs_train_all', exist_ok=True)
-    #     train_dataset = dataset(args.datadir, args.hdrdir, split='train', downsample=args.downsample_train,
-    #                             is_stack=False)
-    #     evaluation_all(train_dataset, tensoIR, args, renderer,visibility_net, f'{logfolder}/imgs_test_all/',
-    #                    N_samples=-1, white_bg=white_bg, ndc_ray=ndc_ray, device=device, test_all=True)
-
-
 
     if args.render_test:
         os.makedirs(f'{logfolder}/imgs_test_all', exist_ok=True)
@@ -110,18 +100,18 @@ def render_test(args):
             os.makedirs(f'{logfolder}/imgs_test_all/{cur_light_name}', exist_ok=True)
             PSNRs_test, PSNRs_rgb_brdf_test, MAE_test,\
                 PSNR_albedo_single, PSNR_albedo_three = evaluation_iter_TensoIR_general_multi_lights(
-                                                                test_dataset, 
-                                                                tensoIR, 
-                                                                args, 
-                                                                renderer, 
-                                                                f'{logfolder}/imgs_test_all/{cur_light_name}/', 
-                                                                N_samples=-1,
-                                                                white_bg=white_bg, 
-                                                                ndc_ray=ndc_ray, 
-                                                                device=device,
-                                                                test_all=True,
-                                                                light_idx_to_test=light_idx_to_test,
-                                                                )
+                    test_dataset, 
+                    tensoIR, 
+                    args, 
+                    renderer, 
+                    f'{logfolder}/imgs_test_all/{cur_light_name}/', 
+                    N_samples=-1,
+                    white_bg=white_bg, 
+                    ndc_ray=ndc_ray, 
+                    device=device,
+                    test_all=True,
+                    light_idx_to_test=light_idx_to_test,
+                )
             PSNRs_test_list.append(np.mean(PSNRs_test))
             PSNRs_rgb_brdf_test_list.append(np.mean(PSNRs_rgb_brdf_test))
 
@@ -133,9 +123,9 @@ def render_test(args):
         print(f'PSNR_albedo_three: {PSNR_albedo_three}')
 
 
-
-
 def reconstruction(args):
+    dataset_id = args.datadir.split('scene')[-1][0]
+
     # init dataset
     dataset = dataset_dict[args.dataset_name]
     train_dataset = dataset(
@@ -145,7 +135,9 @@ def reconstruction(args):
                             downsample=args.downsample_train, 
                             light_name=args.light_name,
                             light_name_list=args.light_name_list,
-                            light_rotation=args.light_rotation
+                            light_rotation=args.light_rotation,
+                            dataset=dataset_id,
+                            scene=args.scene
                             )
     test_dataset = dataset(
                             args.datadir, 
@@ -154,7 +146,10 @@ def reconstruction(args):
                             downsample=args.downsample_test, 
                             light_name=args.light_name,
                             light_name_list=args.light_name_list,
-                            light_rotation=args.light_rotation
+                            light_rotation=args.light_rotation,
+                            dataset=dataset_id,
+                            scene=args.scene
+
                             )
     print(f'Finish reading dataset')
 
@@ -219,17 +214,12 @@ def reconstruction(args):
                                         numLgtSGs = args.numLgtSGs,
                                         )
 
-
-
     grad_vars = tensoIR.get_optparam_groups(args.lr_init, args.lr_basis)
     if args.lr_decay_iters > 0:
         lr_factor = args.lr_decay_target_ratio ** (1 / (args.lr_decay_iters))
     else:
         args.lr_decay_iters = args.n_iters
         lr_factor = args.lr_decay_target_ratio ** (1 / (args.lr_decay_iters))
-
-    print("lr decay", args.lr_decay_target_ratio, args.lr_decay_iters)
-
 
     optimizer = torch.optim.Adam(grad_vars, betas=(0.9, 0.99))
 
@@ -242,14 +232,9 @@ def reconstruction(args):
     PSNRs_rgb, PSNRs_rgb_brdf = [], []
 
     Ortho_reg_weight = args.Ortho_weight
-    print("initial Ortho_reg_weight", Ortho_reg_weight)
-
     L1_reg_weight = args.L1_weight_inital
-    print("initial L1_reg_weight", L1_reg_weight)
     TV_weight_density, TV_weight_app = args.TV_weight_density, args.TV_weight_app
     tvreg = TVLoss()
-    print(f"initial TV_weight density: {TV_weight_density} appearance: {TV_weight_app}")
-
 
     all_rays, all_rgbs, all_masks, all_light_idx = train_dataset.all_rays, train_dataset.all_rgbs, train_dataset.all_masks, train_dataset.all_light_idx
     print(
@@ -261,9 +246,7 @@ def reconstruction(args):
     
     # Filter rays outside the bbox
     _, filter_mask = tensoIR.filtering_rays(all_rays, bbox_only=True, return_mask_only=True)
-    valid_ray_indices = torch.nonzero(filter_mask.reshape(-1), as_tuple=False).squeeze(-1).to(torch.int32)
-    print(f"Filtered ray count: {valid_ray_indices.shape[0]} / {all_rays.shape[0]}")
-    
+    valid_ray_indices = torch.nonzero(filter_mask.reshape(-1), as_tuple=False).squeeze(-1).to(torch.int32)    
     trainingSampler = SimpleSampler(valid_ray_indices.shape[0], args.batch_size)
 
     pbar = tqdm(range(args.n_iters), miniters=args.progress_refresh_rate, file=sys.stdout) if (
@@ -303,22 +286,18 @@ def reconstruction(args):
         if Ortho_reg_weight > 0:
             loss_reg = tensoIR.vector_comp_diffs()
             total_loss += Ortho_reg_weight * loss_reg
-            summary_writer.add_scalar('train/reg', loss_reg.detach().item(), global_step=iteration)
         if L1_reg_weight > 0:
             loss_reg_L1 = tensoIR.density_L1()
             total_loss += L1_reg_weight * loss_reg_L1
-            summary_writer.add_scalar('train/reg_l1', loss_reg_L1.detach().item(), global_step=iteration)
 
         if TV_weight_density > 0:
             TV_weight_density *= lr_factor
             loss_tv = tensoIR.TV_loss_density(tvreg) * TV_weight_density
             total_loss = total_loss + loss_tv
-            summary_writer.add_scalar('train/reg_tv_density', loss_tv.detach().item(), global_step=iteration)
         if TV_weight_app > 0:
             TV_weight_app *= lr_factor
             loss_tv = tensoIR.TV_loss_app(tvreg)*TV_weight_app
             total_loss = total_loss + loss_tv
-            summary_writer.add_scalar('train/reg_tv_app', loss_tv.detach().item(), global_step=iteration)
 
         if relight_flag:
             loss_rgb_brdf = torch.mean((ret_kw['rgb_with_brdf_map'] - rgb_with_brdf_train) ** 2)
@@ -330,22 +309,18 @@ def reconstruction(args):
             if args.normals_diff_weight > 0:
                 loss_normals_diff = normal_weight_factor * args.normals_diff_weight * ret_kw['normals_diff_map'].mean()
                 total_loss += loss_normals_diff
-                summary_writer.add_scalar('train/normals_diff_loss', loss_normals_diff.detach().item(), iteration)
 
             if args.normals_orientation_weight > 0:
                 loss_normals_orientation = normal_weight_factor * args.normals_orientation_weight * ret_kw['normals_orientation_loss_map'].mean()
                 total_loss += loss_normals_orientation
-                summary_writer.add_scalar('train/normals_orientation_loss', loss_normals_orientation.detach().item(), iteration)
 
             if args.roughness_smoothness_loss_weight > 0: 
                 roughness_smoothness_loss = BRDF_weight_factor * args.roughness_smoothness_loss_weight * ret_kw['roughness_smoothness_loss']
                 total_loss += roughness_smoothness_loss
-                summary_writer.add_scalar('train/roughness_smoothness_loss', roughness_smoothness_loss.detach().item(), iteration)
             
             if args.albedo_smoothness_loss_weight > 0: 
                 albedo_smoothness_loss = BRDF_weight_factor * args.albedo_smoothness_loss_weight * ret_kw['albedo_smoothness_loss']
                 total_loss += albedo_smoothness_loss
-                summary_writer.add_scalar('train/albedo_smoothness_loss', albedo_smoothness_loss.detach().item(), iteration)
 
 
         optimizer.zero_grad()
@@ -375,9 +350,6 @@ def reconstruction(args):
                     f'Iteration {iteration:05d} PSNR:'
                     + f' train_rgb = {float(np.mean(PSNRs_rgb)):.2f}'
                     + f' train_rgb_brdf = {float(np.mean(PSNRs_rgb_brdf)):.2f}'
-                    + f' test_rgb = {float(np.mean(PSNRs_test)):.2f}'
-                    + f' test_rgb_brdf = {float(np.mean(PSNRs_rgb_brdf_test)):.2f}'
-                    + f' mse = {float(total_loss):.6f}'
                 )
                 PSNRs_rgb = []
                 PSNRs_rgb_brdf = []
@@ -386,27 +358,21 @@ def reconstruction(args):
             if iteration % args.vis_every == args.vis_every - 1 and args.N_vis != 0 :
                 PSNRs_test, PSNRs_rgb_brdf_test, MAE_test, \
                     PSNR_albedo_single, PSNR_albedo_three \
-                                                        = evaluation_iter_TensoIR_general_multi_lights(  
-                                                            test_dataset, 
-                                                            tensoIR, 
-                                                            args, 
-                                                            renderer, 
-                                                            f'{logfolder}/imgs_vis/',
-                                                            prtx=f'{iteration:06d}_', 
-                                                            N_samples=nSamples,
-                                                            white_bg=white_bg, 
-                                                            ndc_ray=ndc_ray,
-                                                            compute_extra_metrics=False, 
-                                                            logger=summary_writer,
-                                                            step=iteration, 
-                                                            device=device,
-                                                        )
-                summary_writer.add_scalar('test/psnr_rgb', np.mean(PSNRs_test), global_step=iteration)
-                summary_writer.add_scalar('test/psnr_rgb_brdf', np.mean(PSNRs_rgb_brdf_test), global_step=iteration)
-                summary_writer.add_scalar('test/mae', MAE_test, global_step=iteration)
-                summary_writer.add_scalar('test/psnr_albedo_single', PSNR_albedo_single, global_step=iteration)
-                summary_writer.add_scalar('test/psnr_albedo_three', PSNR_albedo_three, global_step=iteration)
-
+                        = evaluation_iter_TensoIR_general_multi_lights(  
+                            test_dataset, 
+                            tensoIR, 
+                            args, 
+                            renderer, 
+                            f'{logfolder}/imgs_vis/',
+                            prtx=f'{iteration:06d}_', 
+                            N_samples=nSamples,
+                            white_bg=white_bg, 
+                            ndc_ray=ndc_ray,
+                            compute_extra_metrics=False, 
+                            logger=summary_writer,
+                            step=iteration, 
+                            device=device,
+                        )
             # Save iteration models
             if iteration % args.save_iters == 0:
                 tensoIR.save(f'{logfolder}/checkpoints/{args.expname}_{iteration}.th')
@@ -415,8 +381,6 @@ def reconstruction(args):
         # Update learning rate
         for param_group in optimizer.param_groups:
             param_group['lr'] = param_group['lr'] * lr_factor
-
-
 
         if iteration in update_AlphaMask_list:
 
@@ -458,13 +422,6 @@ def reconstruction(args):
 
     tensoIR.save(f'{logfolder}/{args.expname}.th')
 
-    # if args.render_train:
-    #     os.makedirs(f'{logfolder}/imgs_train_all', exist_ok=True)
-    #     train_dataset = dataset(args.datadir, split='train', downsample=args.downsample_train, is_stack=True)
-    #     PSNRs_test = evaluation(train_dataset, tensoIR, args, renderer, visibility_net, f'{logfolder}/imgs_train_all/',
-    #                             N_vis=-1, N_samples=-1, white_bg=white_bg, ndc_ray=ndc_ray, device=device)
-    #     print(f'======> {args.expname} test all psnr: {np.mean(PSNRs_test)} <========================')
-
     if args.render_test:
         os.makedirs(f'{logfolder}/imgs_test_all', exist_ok=True)
         PSNRs_test_list, PSNRs_rgb_brdf_test_list = [], []
@@ -493,14 +450,6 @@ def reconstruction(args):
         summary_writer.add_scalar('test/psnr_albedo_single_all', PSNR_albedo_single, global_step=iteration)
         summary_writer.add_scalar('test/psnr_albedo_three_all', PSNR_albedo_three, global_step=iteration)
         print(f'======> {args.expname} test all: nvs psnr: {np.mean(PSNRs_test_list)}, nvs with brdf psnr: {np.mean(PSNRs_rgb_brdf_test_list)}, MAE: {MAE_test}  <========================')
-
-    # if args.render_path:
-    #     c2ws = test_dataset.render_path
-    #     # c2ws = test_dataset.poses
-    #     print('========>', c2ws.shape)
-    #     os.makedirs(f'{logfolder}/imgs_path_all', exist_ok=True)
-    #     evaluation_path(test_dataset, tensoIR, c2ws, renderer, visibility_net,  f'{logfolder}/imgs_path_all/',
-    #                     N_vis=-1, N_samples=-1, white_bg=white_bg, ndc_ray=ndc_ray, device=device)
 
 
 if __name__ == '__main__':

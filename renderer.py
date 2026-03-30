@@ -22,7 +22,6 @@ def compute_rescale_ratio(tensoIR, dataset, sampled_num=20):
     data_num = len(dataset)
     interval = data_num // sampled_num
     idx_list = [i * interval for i in range(sampled_num)]
-    ratio_list = list()
     gt_albedo_list = []
     reconstructed_albedo_list = []
     for idx in tqdm(idx_list, desc="compute rescale ratio"):
@@ -155,50 +154,45 @@ def evaluation_iter_TensoIR_general_multi_lights(
     os.makedirs(savePath, exist_ok=True)
     os.makedirs(savePath + "/nvs_with_radiance_field", exist_ok=True)
     os.makedirs(savePath + "/nvs_with_brdf", exist_ok=True)
-    os.makedirs(savePath + "/normal", exist_ok=True)
-    os.makedirs(savePath + "/normal_vis", exist_ok=True)
-    os.makedirs(savePath + "/brdf", exist_ok=True)
     os.makedirs(savePath + "/envir_map/", exist_ok=True)
-    os.makedirs(savePath + "/acc_map", exist_ok=True)
-
+    
     try:
         tqdm._instances.clear()
     except Exception:
         pass
-
-    near_far = test_dataset.near_far
+    
     W, H = test_dataset.img_wh
-    gt_envir_map = None
 
     _, view_dirs = tensoIR.generate_envir_map_dir(256, 512)
 
     predicted_envir_map = tensoIR.get_light_rgbs(view_dirs.reshape(-1, 3).to(device))
-    predicted_envir_map = predicted_envir_map.reshape(256 * tensoIR.light_num, 512, 3).cpu().detach().numpy()
+    predicted_envir_map = predicted_envir_map.reshape(
+        tensoIR.light_num, 256, 512, 3
+    ).cpu().detach().numpy()
+
     predicted_envir_map = np.clip(predicted_envir_map, a_min=0, a_max=np.inf)
-    predicted_envir_map = np.uint8(np.clip(np.power(predicted_envir_map, 1./2.2), 0., 1.) * 255.)
-    if gt_envir_map is not None:
-        envirmap = np.concatenate((gt_envir_map, predicted_envir_map), axis=1)
-    else:
-        envirmap = predicted_envir_map
-    # save predicted envir map
-    imageio.imwrite(f'{savePath}/envir_map/{prtx}envirmap.png', envirmap)
+    predicted_envir_map = np.uint8(
+        np.clip(np.power(predicted_envir_map, 1.0 / 2.2), 0.0, 1.0) * 255.0
+    )
+
+    # save one env map per light/image
+    os.makedirs(f'{savePath}/envir_map', exist_ok=True)
+    for i in range(tensoIR.light_num):
+        envirmap = predicted_envir_map[i]
+        print(i)
+        imageio.imwrite(f'{savePath}/envir_map/{prtx}envirmap_{i:03d}.png', envirmap)
 
     # compute global rescale ratio for predicted albedo
-    if test_all:
-        global_rescale_value_single, global_rescale_value_three = compute_rescale_ratio(tensoIR, test_dataset, sampled_num=20)
-        global_rescale_value_single, global_rescale_value_three = global_rescale_value_single.cpu(), global_rescale_value_three.cpu()
-
-
     for idx in range(1):
         item = test_dataset.__getitem__(idx)
         rays = item['rays']                 # [H*W, 6]
         light_idx = item['light_idx']
         
-        rgb_map, rgb_with_brdf_map, depth_map= [], [], []
+        rgb_map, rgb_with_brdf_map= [], []
 
         chunk_idxs = torch.split(torch.arange(rays.shape[0]), args.batch_size_test)
         for chunk_idx in chunk_idxs:
-            ret_kw= renderer(   
+            ret_kw = renderer(   
                 rays[chunk_idx], 
                 None, # not used
                 torch.tensor([light_idx for btchsz in range(args.batch_size_test)]).cuda(),
@@ -213,34 +207,26 @@ def evaluation_iter_TensoIR_general_multi_lights(
             )
             
             rgb_map.append(ret_kw['rgb_map'].detach().cpu())
-            depth_map.append(ret_kw['depth_map'].detach().cpu())
 
             rgb_with_brdf_map.append(ret_kw['rgb_with_brdf_map'].detach().cpu())
         
         rgb_map = torch.cat(rgb_map)
-        depth_map = torch.cat(depth_map)
 
         rgb_with_brdf_map = torch.cat(rgb_with_brdf_map)
 
         rgb_map = rgb_map.clamp(0.0, 1.0)
         rgb_with_brdf_map = rgb_with_brdf_map.clamp(0.0, 1.0)
 
-        rgb_map, depth_map = rgb_map.reshape(H, W, 3).detach().cpu(), depth_map.reshape(H, W).detach().cpu()
+        rgb_map = rgb_map.reshape(H, W, 3).detach().cpu()
         rgb_with_brdf_map = rgb_with_brdf_map.reshape(H, W, 3).detach().cpu()
-
-        depth_map, _ = visualize_depth_numpy(depth_map.numpy(), near_far)
 
         rgb_map = (rgb_map.numpy() * 255).astype('uint8')
         rgb_with_brdf_map = (rgb_with_brdf_map.numpy() * 255).astype('uint8')
 
         rgb_maps.append(rgb_map)
         rgb_with_brdf_maps.append(rgb_with_brdf_map)
-        depth_maps.append(depth_map)
 
         if savePath is not None:
-            rgb_map = np.concatenate((rgb_map, depth_map), axis=1)
-            rgb_with_brdf_map = np.concatenate((rgb_with_brdf_map), axis=1)
-
             imageio.imwrite(f'{savePath}/nvs_with_radiance_field/{prtx}{idx:03d}.png', rgb_map)
             imageio.imwrite(f'{savePath}/nvs_with_brdf/{prtx}{idx:03d}.png', rgb_with_brdf_map)
 

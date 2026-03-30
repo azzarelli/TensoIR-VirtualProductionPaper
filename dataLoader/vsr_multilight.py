@@ -111,6 +111,8 @@ class VSR_multi_lights(Dataset):
                  downsample=1.0,
                  sub=0,
                  light_name_list=["sunset", "snow", "courtyard"],
+                 dataset=0,
+                 scene=0,
                  **temp
                  ):
         """
@@ -137,7 +139,7 @@ class VSR_multi_lights(Dataset):
         self.img_wh = (int(1920 / downsample), int(1080 / downsample))  
         self.white_bg = True
         self.downsample = downsample
-        self.requested_light_name_list = list(light_name_list) if light_name_list is not None else None
+        self.requested_light_name_list = list(light_name_list)
         
         self.transform = self.define_transforms()
         self.near_far = [0.1, 5.0]  
@@ -151,6 +153,26 @@ class VSR_multi_lights(Dataset):
 
         ## Load light data
         self.hdr_dir = Path(hdr_dir)
+        
+        self.scene = scene
+        self.dataset_id = dataset
+        if scene == 1:
+            self.min_image_idx = 0
+            self.max_image_idx = 33
+        elif scene == 2:
+            self.min_image_idx = 33
+            self.max_image_idx = 66
+        elif scene == 3:
+            self.min_image_idx = 66
+            self.max_image_idx = 99
+        else:
+            print('Scene argument incorrect')
+            exit()
+            
+        if dataset == 1:
+            self.test_cam_idx = 5
+        else:
+            self.test_cam_idx = 18
 
         self.read_lights()
 
@@ -173,7 +195,7 @@ class VSR_multi_lights(Dataset):
         background_fps = sorted(os.listdir(self.hdr_dir))
 
         names = []
-        subset_range = [0, 32]
+        subset_range = [self.min_image_idx, self.max_image_idx]
         selected_names = background_fps[subset_range[0]:subset_range[1]]
 
         for idx, light_name in enumerate(selected_names):
@@ -195,7 +217,7 @@ class VSR_multi_lights(Dataset):
         # Set light names list
         self.light_name_list = names
         self.light_num = len(self.light_name_list)
-        print(f"Using {self.light_num} training lights: {self.light_name_list}")
+        print(f"Using {self.light_num} for Dataset/scene: {self.dataset_id}-{self.scene}")
 
     def read_all_frames(self):
         self.all_masks = []
@@ -203,9 +225,9 @@ class VSR_multi_lights(Dataset):
         canon_cam_infos = readCamerasFromTransforms(self.root_dir, 'transforms.json')
         tot_cams = len(canon_cam_infos) - 19
         
-        c_cams = canon_cam_infos[-20:]
-        # c_cams.pop(5)
-        
+        c_cams = canon_cam_infos[-19:]
+        c_cams.pop(self.test_cam_idx)
+
         total_rows = 0
         for idx, cam_info in enumerate(c_cams):
             img_wh = (int(cam_info.width / self.downsample), int(cam_info.height / self.downsample))
@@ -230,7 +252,6 @@ class VSR_multi_lights(Dataset):
             cam_idx = (cam_info.uid - tot_cams)
             cam_name = f'cam{cam_idx:02}'
 
-            
             ## Camera Intrinsic Settings ## 
             img_wh = (int(cam_info.width / self.downsample), int(cam_info.height / self.downsample))
             self.img_wh = img_wh
@@ -322,19 +343,8 @@ class VSR_multi_lights(Dataset):
         tot_cams = len(canon_cam_infos) - 19
         
         c_cams = canon_cam_infos[-19:]
-        total_rows = 0
-        for idx, cam_info in enumerate(c_cams):
-            img_wh = (int(cam_info.width / self.downsample), int(cam_info.height / self.downsample))
-            cam_idx = (cam_info.uid - tot_cams)
-            total_rows += img_wh[0] * img_wh[1] * (self.light_num)
         
-        rays = torch.empty((total_rows, 6), dtype=torch.float32)
-        rgbs = torch.empty((total_rows, 3), dtype=torch.float32)
-        self.all_light_idx = torch.empty((total_rows, 1), dtype=torch.int8)
-        row_offset = 0
-
-        cidx = -1
-        cam_info = c_cams[cidx]
+        cam_info = c_cams[self.test_cam_idx]
         cam_idx = (cam_info.uid - tot_cams)
         cam_name = f'cam{cam_idx:02}'
         
@@ -368,7 +378,6 @@ class VSR_multi_lights(Dataset):
         rays_o, rays_d = get_rays(directions, c2w)
         rays = torch.cat([rays_o, rays_d], 1)  # [H*W, 6]
 
-        # light_kind_to_choose = int(np.random.randint(len(self.light_name_list))) # temp
         cam_folder_path = os.path.join(self.root_dir, 'meta', 'images', cam_name)
         mask_path = os.path.join(self.root_dir, 'meta', 'masks', f"{cam_name}.png")
         
@@ -380,7 +389,7 @@ class VSR_multi_lights(Dataset):
         img_name = light_name.replace('png', 'jpg')
         
         relight_img_path = os.path.join(cam_folder_path, img_name)
-        
+
         relight_img = Image.open(relight_img_path)
         alpha = Image.open(mask_path).split()[-1]
 
@@ -393,13 +402,11 @@ class VSR_multi_lights(Dataset):
         
         relight_img = relight_img.view(4, -1).permute(1, 0)  # [H*W, 4]
         
-        
         ## Blend RGBA to RGB
         rgbs = relight_img[:, :3] * relight_img[:, -1:] + (1 - relight_img[:, -1:])  # [H*W, 3]
         row_count = img_wh[0] * img_wh[1]
         next_offset = row_offset + row_count
         row_offset = next_offset
-
 
         item = {
             'img_wh': img_wh,  # (int, int)
@@ -413,43 +420,3 @@ class VSR_multi_lights(Dataset):
         }
         return item
 
-
-if __name__ == "__main__":
-    from opt import config_parser
-
-    args = config_parser()
-
-    dataset = TensoIR_Dataset_unknown_general_multi_lights(
-        root_dir='/home/haian/Dataset/NeRF_DATA/hotdog_rotate',
-        hdr_dir='/home/haian/Dataset/light_probes/',
-        split='test',
-        random_test=False,
-        downsample=1.0
-    )
-
-    # Test 1: Get single item
-    item = dataset.__getitem__(0)
-
-    # import ipdb; ipdb.set_trace()
-    # Test 2: Iteration
-    # train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, num_workers=1, drop_last=True, shuffle=True)
-    # train_iter = iter(train_dataloader)
-    # for i in range(20):
-    #     try:
-    #         item = next(train_iter)
-    #         print(item.keys())
-    #         print(item['rays'].shape)
-    #     except StopIteration:
-    #         print('Start a new iteration from the dataloader')
-    #         train_iter = iter(train_dataloader)
-
-    # Test 3: Test dataset all stack
-    # test_dataset = TensoRFactorDataset(
-    #     root_dir='/code/MVSNeRFactor/data/nerfactor_synthesis/hotdog',
-    #     hdr_dir='/code/MVSNeRFactor/data/low_res_envmaps_32_16',
-    #     split='test',
-    #     downsample=1.0,
-    #     is_stack=True
-    # )
-    # print(test_dataset.all_rays.shape)  # [4, 640000, 6]
-    # print(test_dataset.all_rgbs.shape)  # [4, 640000, 3]
