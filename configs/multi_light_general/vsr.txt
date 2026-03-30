@@ -1,6 +1,6 @@
 dataset_name = tensoIR_unknown_general_multi_lights
 datadir = /media/barry/56EA40DEEA40BBCD1/DATA/studio_test5/scene3/
-hdrdir = /media/barry/56EA40DEEA40BBCD1/DATA/studio_test5/scene3/meta/backgrounds
+hdrdir = ./data/hdr/
 expname = test
 scene=3
 

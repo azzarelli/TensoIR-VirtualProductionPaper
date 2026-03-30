@@ -24,18 +24,23 @@ from utils import rgb_ssim, rgb_lpips
 from models.relight_utils import Environment_Light
 from renderer import compute_rescale_ratio
 
-
+import numpy.core
+import sys
+# Compatibility shim for checkpoints pickled with numpy._core references
+sys.modules["numpy._core"] = numpy.core
+sys.modules["numpy._core.multiarray"] = numpy.core.multiarray
 
 
 @torch.no_grad()
 def relight(dataset, args):
-
+    print(args.ckpt)
     if not os.path.exists(args.ckpt):
         print('the checkpoint path for tensoIR does not exists!!!')
         return
         
 
     ckpt = torch.load(args.ckpt, map_location=device)
+    # ckpt = torch.load(args.ckpt, map_location=device, weights_only=False)
     kwargs = ckpt['kwargs']
     kwargs.update({'device': device})
     tensoIR = eval(args.model_name)(**kwargs)
@@ -367,9 +372,10 @@ if __name__ == "__main__":
     dataset = dataset_dict[args.dataset_name]
 
     # names of the environment maps used for relighting
-    light_name_list= ['bridge', 'city', 'fireplace', 'forest', 'night']
+    light_name_list= ['010']
 
 
+    dataset_id = args.datadir.split('scene')[-1][0]
 
     test_dataset = dataset(                            
                             args.datadir, 
@@ -379,7 +385,10 @@ if __name__ == "__main__":
                             downsample=args.downsample_test,
                             light_names=light_name_list,
                             light_rotation=args.light_rotation,
+                            dataset=dataset_id,
+                            scene=args.scene
                             )
+    
     relight(test_dataset , args)
 
     
