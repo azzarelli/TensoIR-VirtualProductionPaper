@@ -183,7 +183,8 @@ def evaluation_iter_TensoIR_general_multi_lights(
         imageio.imwrite(f'{savePath}/envir_map/{prtx}envirmap_{i:03d}.png', envirmap)
 
     # compute global rescale ratio for predicted albedo
-    for idx in range(1):
+    num_test_lights = min(10, len(test_dataset.light_name_list))
+    for idx in range(num_test_lights):
         item = test_dataset.__getitem__(idx)
         rays = item['rays']                 # [H*W, 6]
         light_idx = item['light_idx']
@@ -191,11 +192,15 @@ def evaluation_iter_TensoIR_general_multi_lights(
         rgb_map, rgb_with_brdf_map= [], []
 
         chunk_idxs = torch.split(torch.arange(rays.shape[0]), args.batch_size_test)
+        
         for chunk_idx in chunk_idxs:
+            cur_bs = len(chunk_idx)
+            light_idx_chunk = torch.full((cur_bs, 1), light_idx, dtype=torch.long, device=device)
+
             ret_kw = renderer(   
                 rays[chunk_idx], 
                 None, # not used
-                torch.tensor([light_idx for btchsz in range(args.batch_size_test)]).cuda(),
+                light_idx_chunk.cuda(),
                 tensoIR, 
                 N_samples=N_samples,
                 ndc_ray=ndc_ray,

@@ -201,9 +201,9 @@ class VSR_multi_lights(Dataset):
         for idx, light_name in enumerate(selected_names):
             
             # TODO: switch these two back once the env maps are synthesized REMINDER!!!!
-            if self.split == 'test' and idx > 22:
+            if self.split == 'train' and idx > 22:
                 continue
-            if self.split == 'train' and idx < 23:
+            if self.split == 'test' and idx < 23:
                 continue
             
             hdr_path = self.hdr_dir / light_name
@@ -217,9 +217,11 @@ class VSR_multi_lights(Dataset):
 
         # Set light names list
         self.light_name_list = names
+        
+        if self.split == 'test': 
+            self.light_name_list = ['001.png', '002.png', '003.png', '004.png', '005.png', '006.png', '007.png', '008.png', '009.png', '010.png']
         self.light_num = len(self.light_name_list)
         print(f"[{self.split}] Using {self.light_num} for Dataset/scene: {self.dataset_id}-{self.scene}")
-
 
     def read_all_frames(self):
         self.all_masks = []
