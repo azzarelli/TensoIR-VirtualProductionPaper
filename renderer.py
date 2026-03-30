@@ -183,8 +183,7 @@ def evaluation_iter_TensoIR_general_multi_lights(
         imageio.imwrite(f'{savePath}/envir_map/{prtx}envirmap_{i:03d}.png', envirmap)
 
     # compute global rescale ratio for predicted albedo
-    num_test_lights = min(10, len(test_dataset.light_name_list))
-    for idx in range(num_test_lights):
+    for idx in range(1):
         item = test_dataset.__getitem__(idx)
         rays = item['rays']                 # [H*W, 6]
         light_idx = item['light_idx']
