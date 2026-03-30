@@ -406,9 +406,7 @@ class VSR_multi_lights(Dataset):
         
         ## Blend RGBA to RGB
         rgbs = relight_img[:, :3] * relight_img[:, -1:] + (1 - relight_img[:, -1:])  # [H*W, 3]
-        row_count = img_wh[0] * img_wh[1]
-        next_offset = row_offset + row_count
-        row_offset = next_offset
+
 
         item = {
             'img_wh': img_wh,  # (int, int)
