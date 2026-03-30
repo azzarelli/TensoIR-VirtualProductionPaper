@@ -1,4 +1,4 @@
-# TensoIR: Tensorial Inverse Rendering (CVPR 2023)
+# (Modified for Virtual Production) TensoIR: Tensorial Inverse Rendering
 
 ## [Project Page](https://haian-jin.github.io/TensoIR/) |  [Paper](https://arxiv.org/abs/2304.12461)
 
