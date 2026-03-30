@@ -1,0 +1,1 @@
+export PYTHONPATH=. && python train_tensoIR_general_multi_lights.py  --config ./configs/multi_light_general/vsr.txt --relight_chunk_size 10000
