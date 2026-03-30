@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=mdoel3.1
+#SBATCH --job-name=outputs_
 #SBATCH --output=mdoel3.1.out
 #SBATCH --gpus=1
 #SBATCH --ntasks-per-gpu=1
@@ -13,6 +13,8 @@ source ~/miniforge3/bin/activate
 conda activate TensoIR
 DATASET_NAME="1"
 SCENE_ID="1"
+
+scontrol update JobId=$SLURM_JOB_ID Name=outputs_${DATASET_NAME}_${SCENE_ID}
 
 python train_tensoIR_general_multi_lights.py \
   --expname "HPC-$DATASET_NAME-$SCENE_ID" \
